@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "cstdint": "c"
+    },
+    "cmake.sourceDirectory": "${workspaceFolder}/src"
+}
