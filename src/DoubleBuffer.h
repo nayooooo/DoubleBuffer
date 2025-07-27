@@ -11,6 +11,21 @@
     Tools Begin
 ==================================================*/
 
+/* ----- Unused ----- */
+
+#ifndef UNUSED
+#   define UNUSED(X) ((void)X)
+#endif  // !UNUSED
+
+/* ----- Compare ----- */
+
+#ifndef MAX
+#   define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif  // !MAX
+#ifndef MIN
+#   define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif  // !MIN
+
 /* ----- Bit ----- */
 
 #ifndef BIT
@@ -55,27 +70,13 @@ typedef uint32_t DB_State;
 ==================================================*/
 
 /*==================================================
-    Event Begin
-==================================================*/
-
-typedef uint32_t DB_Event;
-#define DB_EVENT_NONE                   0
-#define DB_EVENT_START_FILL             BIT(0)
-#define DB_EVENT_STOP_FILL              BIT(1)
-#define DB_EVENT_START_SEND             BIT(2)
-#define DB_EVENT_STOP_SEND              BIT(3)
-#define DB_EVENT_SWAP                   BIT(4)
-#define DB_EVENT_MASK                   (BIT(5) - 1)
-
-/*==================================================
-    Event End
-==================================================*/
-
-/*==================================================
     Structer Begin
 ==================================================*/
 
 /* ----- DoubleBuffer ----- */
+
+typedef void (*DB_Buff_Event_Callback)(uint32_t size, void *user_data);
+typedef void (*DB_Swap_Event_Callback)(uint8_t nb_ind, void *user_data);
 
 struct DoubleBuffer
 {
@@ -91,13 +92,24 @@ struct DoubleBuffer
 
     volatile DB_State state;
 
-    /*--------- event ---------*/
-
-    volatile DB_Event event;
-
     /*-------- handle ---------*/
 
     uint32_t (*send)(uint8_t *buf, uint32_t size);
+
+    /*---- event callback -----*/
+
+    DB_Buff_Event_Callback fill_start;
+    DB_Buff_Event_Callback fill_complete;
+    DB_Swap_Event_Callback swap_start;
+    DB_Swap_Event_Callback swap_complete;
+    DB_Buff_Event_Callback send_start;
+    DB_Buff_Event_Callback send_complete;
+    DB_Buff_Event_Callback recv_start;
+    DB_Buff_Event_Callback recv_complete;
+
+    /*------- user data -------*/
+
+    void *user_data;
 };
 
 /*==================================================
@@ -117,6 +129,27 @@ int db_set_buffer(
 int db_set_send_handle(
     struct DoubleBuffer * const db,
     uint32_t (*send)(uint8_t *buf, uint32_t size)
+);
+int db_set_fill_start(struct DoubleBuffer * const db, DB_Buff_Event_Callback fill_start);
+int db_set_fill_complete(struct DoubleBuffer * const db, DB_Buff_Event_Callback fill_complete);
+int db_set_swap_start(struct DoubleBuffer * const db, DB_Swap_Event_Callback swap_start);
+int db_set_swap_complete(struct DoubleBuffer * const db, DB_Swap_Event_Callback swap_complete);
+int db_set_send_start(struct DoubleBuffer * const db, DB_Buff_Event_Callback send_start);
+int db_set_send_complete(struct DoubleBuffer * const db, DB_Buff_Event_Callback send_complete);
+int db_set_recv_start(struct DoubleBuffer * const db, DB_Buff_Event_Callback recv_start);
+int db_set_recv_complete(struct DoubleBuffer * const db, DB_Buff_Event_Callback recv_complete);
+
+int db_set_user_data(struct DoubleBuffer * const db, void *user_data);
+
+int db_send(
+    struct DoubleBuffer * const db,
+    const uint8_t * const buff,
+    uint32_t offset, uint32_t size
+);
+int db_recv(
+    struct DoubleBuffer * const db,
+    const uint8_t * const buff,
+    uint32_t offset, uint32_t size
 );
 
 /*==================================================

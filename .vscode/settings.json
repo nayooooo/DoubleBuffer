@@ -1,6 +1,10 @@
 {
     "files.associations": {
-        "cstdint": "c"
+        "cstdint": "c",
+        "string.h": "c",
+        "stdlib.h": "c",
+        "corecrt_wstdlib.h": "c",
+        "doublebuffer.h": "c"
     },
     "cmake.sourceDirectory": "${workspaceFolder}/src"
 }
