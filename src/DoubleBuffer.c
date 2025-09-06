@@ -26,9 +26,11 @@ int db_init(struct DoubleBuffer * const db)
     db->counter[1] = 0;
     db->back_index = 0;
 
+    db_set_state(db, DB_STATE_INITED);
     db_set_state(db, DB_STATE_NO_BUFFER);
 
     db->send = nullptr;
+    db->recv = nullptr;
 
     db->fill_start    = nullptr;
     db->fill_complete = nullptr;
@@ -64,15 +66,17 @@ int db_set_buffer(
     db->buff[1] = buf1;
     db->size = size;
 
-    db_set_state(db, DB_STATE_IDLE);
     db_clr_state(db, DB_STATE_NO_BUFFER);
+    db_set_state(db, DB_STATE_BACK_IDLE);
+    db_set_state(db, DB_STATE_FRONT_IDLE);
 
     return 0;
 }
 
 int db_set_send_handle(
     struct DoubleBuffer * const db,
-    uint32_t (*send)(uint8_t *buf, uint32_t size)
+    void (*send)(uint8_t *buf, uint32_t size),
+    void (*recv)(uint8_t *buf, uint32_t size)
 )
 {
     if (db == nullptr) {
@@ -80,6 +84,7 @@ int db_set_send_handle(
     }
 
     db->send = send;
+    db->recv = recv;
 
     return 0;
 }
@@ -183,63 +188,92 @@ int db_set_user_data(struct DoubleBuffer * const db, void *user_data)
     return 0;
 }
 
-int db_send(
+static int db_fill_back_buffer(
     struct DoubleBuffer * const db,
     const uint8_t * const buff,
     uint32_t offset, uint32_t size
 )
 {
-    uint32_t size_to_send = 0;
-
-    if (db == nullptr) {
-        return -1;
-    }
-    if (buff == nullptr) {
-        return -2;
-    }
-    if (size <= 0) {
-        return -3;
-    }
-
-    if (db->back_index >= 2) {
-        db->state = DB_STATE_UNINIT;
-        return -4;
-    }
-
-    if (db_chk_state(db, DB_STATE_NO_BUFFER)) {
-        return -5;
-    }
-    if (!db_chk_state(db, DB_STATE_IDLE)) {
-        return -6;
-    }
-
-    size_to_send = MIN(db->size, size);
-    db->counter[db->back_index] = 0;
-    db_clr_state(db, DB_STATE_IDLE);
+    uint32_t size_to_fill = MIN(size, db->size);
+    
+    db_clr_state(db, DB_STATE_BACK_IDLE);
     db_set_state(db, DB_STATE_FILLING);
     if (db->fill_start != nullptr) {
-        db->fill_start(size, db->user_data);
+        db->fill_start(size_to_fill, db->user_data);
     }
 
     DB_Memcpy((void *)&db->buff[db->back_index][0],
               (void *)(buff + offset),
-              size_to_send);
-    db->counter[db->back_index] = size_to_send;
+              size_to_fill);
+    db->counter[db->back_index] = size_to_fill;
 
-    db_set_state(db, DB_STATE_FILLED);
     db_clr_state(db, DB_STATE_FILLING);
     if (db->fill_complete != nullptr) {
         db->fill_complete(db->counter[db->back_index], db->user_data);
     }
 
-    if (!db_chk_state(db, DB_STATE_FILLING)
-        && db_chk_state(db, DB_STATE_SENDING)) {
-        db_set_state(db, DB_STATE_READY_TO_SWAP);
-        db_clr_state(db, DB_STATE_FILLED);
-        db_clr_state(db, DB_STATE_SENT);
+    return (int)db->counter[db->back_index];
+}
+
+int db_send(
+    struct DoubleBuffer * const db,
+    const uint8_t * const buff,
+    uint32_t offset, uint32_t size,
+    uint32_t timeout
+)
+{
+    if (db == nullptr || buff == nullptr || size <= 0) {
+        return -1;
     }
 
-    return (int)db->counter[db->back_index];
+    if (db->back_index >= 2) {
+        db->state = DB_STATE_UNINIT;
+        return -2;
+    }
+
+    if (!db_chk_state(db, DB_STATE_INITED)) {
+        return -3;
+    }
+    if (db_chk_state(db, DB_STATE_NO_BUFFER)) {
+        return -4;
+    }
+
+    // fill back buffer
+    if (db_chk_state(db, DB_STATE_BACK_IDLE)) {
+        db_fill_back_buffer(db, buff, offset, size);
+    } else {
+        return -5;
+    }
+
+    // wait front buffer idle
+    uint32_t time = 0;
+    while (!db_chk_state(db, DB_STATE_FRONT_IDLE)) {
+        time++;
+        if (time >= timeout) {
+            return -6;
+        }
+    }
+
+    // swap and send
+    if (db->swap_start) {
+        db->swap_start(db->back_index, db->user_data);
+    }
+    db->back_index = (db->back_index + 1) % 2;
+    if (db->swap_complete) {
+        db->swap_complete(db->back_index, db->user_data);
+    }
+    uint8_t front_index = db->back_index == 0 ? 1 : 0;
+    if (db->send_start) {
+        db->send_start(db->counter[front_index], db->user_data);
+    }
+    if (db->send) {
+        db->send(&db->buff[front_index][0], db->counter[front_index]);
+    }
+    if (db->send_complete) {
+        db->send_complete(db->counter[front_index], db->user_data);
+    }
+
+    return (int)db->counter[front_index];
 }
 
 int db_recv(

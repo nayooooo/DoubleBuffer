@@ -54,15 +54,15 @@
 ==================================================*/
 
 typedef uint32_t DB_State;
-#define DB_STATE_UNINIT                 0
-#define DB_STATE_NO_BUFFER              BIT(0)
-#define DB_STATE_IDLE                   BIT(1)
-#define DB_STATE_FILLING                BIT(2)
-#define DB_STATE_FILLED                 BIT(3)
-#define DB_STATE_SENDING                BIT(4)
-#define DB_STATE_SENT                   BIT(5)
-#define DB_STATE_READY_TO_SWAP          BIT(6)
-#define DB_STATE_SWAPPING               BIT(7)
+#define DB_STATE_UNINIT                  0
+#define DB_STATE_INITED                  BIT(0)
+#define DB_STATE_NO_BUFFER               BIT(1)
+#define DB_STATE_BACK_IDLE               BIT(2)
+#define DB_STATE_FRONT_IDLE              BIT(3)
+#define DB_STATE_FILLING                 BIT(4)
+#define DB_STATE_SENDING                 BIT(5)
+#define DB_STATE_READY_TO_SWAP           BIT(6)
+#define DB_STATE_SWAPPING                BIT(7)
 #define DB_STATE_MASK                   (BIT(8) - 1)
 
 /*==================================================
@@ -76,7 +76,7 @@ typedef uint32_t DB_State;
 /* ----- DoubleBuffer ----- */
 
 typedef void (*DB_Buff_Event_Callback)(uint32_t size, void *user_data);
-typedef void (*DB_Swap_Event_Callback)(uint8_t nb_ind, void *user_data);
+typedef void (*DB_Swap_Event_Callback)(uint8_t back_ind, void *user_data);
 
 struct DoubleBuffer
 {
@@ -94,7 +94,8 @@ struct DoubleBuffer
 
     /*-------- handle ---------*/
 
-    uint32_t (*send)(uint8_t *buf, uint32_t size);
+    void (*send)(uint8_t *buf, uint32_t size);
+    void (*recv)(uint8_t *buf, uint32_t size);
 
     /*---- event callback -----*/
 
@@ -128,7 +129,8 @@ int db_set_buffer(
 );
 int db_set_send_handle(
     struct DoubleBuffer * const db,
-    uint32_t (*send)(uint8_t *buf, uint32_t size)
+    void (*send)(uint8_t *buf, uint32_t size),
+    void (*recv)(uint8_t *buf, uint32_t size)
 );
 int db_set_fill_start(struct DoubleBuffer * const db, DB_Buff_Event_Callback fill_start);
 int db_set_fill_complete(struct DoubleBuffer * const db, DB_Buff_Event_Callback fill_complete);
@@ -144,7 +146,8 @@ int db_set_user_data(struct DoubleBuffer * const db, void *user_data);
 int db_send(
     struct DoubleBuffer * const db,
     const uint8_t * const buff,
-    uint32_t offset, uint32_t size
+    uint32_t offset, uint32_t size,
+    uint32_t timeout
 );
 int db_recv(
     struct DoubleBuffer * const db,
