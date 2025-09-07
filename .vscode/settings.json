@@ -4,7 +4,9 @@
         "string.h": "c",
         "stdlib.h": "c",
         "corecrt_wstdlib.h": "c",
-        "doublebuffer.h": "c"
+        "doublebuffer.h": "c",
+        "stdio.h": "c",
+        "time.h": "c"
     },
     "cmake.sourceDirectory": "${workspaceFolder}/src"
 }

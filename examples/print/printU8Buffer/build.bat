@@ -1,0 +1,1 @@
+gcc main.c ../../../lib/libDoubleBuffer.a -o printU8Buffer

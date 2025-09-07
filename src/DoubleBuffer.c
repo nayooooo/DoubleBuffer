@@ -1,5 +1,6 @@
 /**
  * @file DoubleBuffer.c
+ * @author nayooooo
  */
 
 #include "DoubleBuffer.h"
@@ -26,9 +27,6 @@ int db_init(struct DoubleBuffer * const db)
     db->counter[1] = 0;
     db->back_index = 0;
 
-    db_set_state(db, DB_STATE_INITED);
-    db_set_state(db, DB_STATE_NO_BUFFER);
-
     db->send = nullptr;
     db->recv = nullptr;
 
@@ -42,6 +40,9 @@ int db_init(struct DoubleBuffer * const db)
     db->recv_complete = nullptr;
 
     db->user_data = nullptr;
+
+    db_set_state(db, DB_STATE_INITED);
+    db_set_state(db, DB_STATE_NO_BUFFER);
 
     return 0;
 }
@@ -73,7 +74,7 @@ int db_set_buffer(
     return 0;
 }
 
-int db_set_send_handle(
+int db_set_handle(
     struct DoubleBuffer * const db,
     void (*send)(uint8_t *buf, uint32_t size),
     void (*recv)(uint8_t *buf, uint32_t size)
@@ -188,6 +189,27 @@ int db_set_user_data(struct DoubleBuffer * const db, void *user_data)
     return 0;
 }
 
+static int db_base_check(struct DoubleBuffer * const db)
+{
+    if (db == nullptr) {
+        return -1;
+    }
+
+    if (db->back_index >= 2) {
+        db->state = DB_STATE_UNINIT;
+        return -2;
+    }
+
+    if (!db_chk_state(db, DB_STATE_INITED)) {
+        return -3;
+    }
+    if (db_chk_state(db, DB_STATE_NO_BUFFER)) {
+        return -4;
+    }
+
+    return 0;
+}
+
 static int db_fill_back_buffer(
     struct DoubleBuffer * const db,
     const uint8_t * const buff,
@@ -208,6 +230,7 @@ static int db_fill_back_buffer(
     db->counter[db->back_index] = size_to_fill;
 
     db_clr_state(db, DB_STATE_FILLING);
+    db_set_state(db, DB_STATE_BACK_IDLE);
     if (db->fill_complete != nullptr) {
         db->fill_complete(db->counter[db->back_index], db->user_data);
     }
@@ -222,20 +245,13 @@ int db_send(
     uint32_t timeout
 )
 {
-    if (db == nullptr || buff == nullptr || size <= 0) {
+    if (buff == nullptr || size <= 0) {
         return -1;
     }
 
-    if (db->back_index >= 2) {
-        db->state = DB_STATE_UNINIT;
-        return -2;
-    }
-
-    if (!db_chk_state(db, DB_STATE_INITED)) {
-        return -3;
-    }
-    if (db_chk_state(db, DB_STATE_NO_BUFFER)) {
-        return -4;
+    int ret = db_base_check(db);
+    if (ret != 0) {
+        return ret;
     }
 
     // fill back buffer
@@ -258,17 +274,24 @@ int db_send(
     if (db->swap_start) {
         db->swap_start(db->back_index, db->user_data);
     }
+
     db->back_index = (db->back_index + 1) % 2;
+
     if (db->swap_complete) {
         db->swap_complete(db->back_index, db->user_data);
     }
+
     uint8_t front_index = db->back_index == 0 ? 1 : 0;
     if (db->send_start) {
         db->send_start(db->counter[front_index], db->user_data);
     }
+
+    db_clr_state(db, DB_STATE_FRONT_IDLE);
+    db_set_state(db, DB_STATE_SENDING);
     if (db->send) {
         db->send(&db->buff[front_index][0], db->counter[front_index]);
     }
+
     if (db->send_complete) {
         db->send_complete(db->counter[front_index], db->user_data);
     }
@@ -288,4 +311,15 @@ int db_recv(
     UNUSED(size);
 
     return 0;
+}
+
+void db_send_complete(struct DoubleBuffer * const db)
+{
+    int ret = db_base_check(db);
+    if (ret != 0) {
+        return;
+    }
+
+    db_clr_state(db, DB_STATE_SENDING);
+    db_set_state(db, DB_STATE_FRONT_IDLE);
 }

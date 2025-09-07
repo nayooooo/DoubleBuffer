@@ -1,5 +1,6 @@
 /**
  * @file DoubleBuffer.h
+ * @author nayooooo
  */
 
 #ifndef __DOUBLEBUFFER_H__
@@ -61,9 +62,7 @@ typedef uint32_t DB_State;
 #define DB_STATE_FRONT_IDLE              BIT(3)
 #define DB_STATE_FILLING                 BIT(4)
 #define DB_STATE_SENDING                 BIT(5)
-#define DB_STATE_READY_TO_SWAP           BIT(6)
-#define DB_STATE_SWAPPING                BIT(7)
-#define DB_STATE_MASK                   (BIT(8) - 1)
+#define DB_STATE_MASK                   (BIT(6) - 1)
 
 /*==================================================
     Fsm End
@@ -127,7 +126,7 @@ int db_set_buffer(
     uint8_t * const buf0, uint8_t * const buf1,
     const uint32_t size
 );
-int db_set_send_handle(
+int db_set_handle(
     struct DoubleBuffer * const db,
     void (*send)(uint8_t *buf, uint32_t size),
     void (*recv)(uint8_t *buf, uint32_t size)
@@ -154,6 +153,8 @@ int db_recv(
     const uint8_t * const buff,
     uint32_t offset, uint32_t size
 );
+
+void db_send_complete(struct DoubleBuffer * const db);
 
 /*==================================================
     API End
