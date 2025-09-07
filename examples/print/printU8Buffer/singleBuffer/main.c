@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define BUFFER_SIZE (128)
-#define RUN_ROUND   (100)
+#define BUFFER_SIZE (1024)
+#define RUN_ROUND   (1000)
 #define TEST_USE_PRINT       0
 
 uint8_t buf[BUFFER_SIZE] = { 0 };
@@ -23,7 +23,7 @@ int main()
     uint8_t _buf[BUFFER_SIZE] = { 0 };
     QueryPerformanceFrequency(&frequency);
 
-    printf("start!\n");
+    printf("buf[%u] %u test start!\n", BUFFER_SIZE, RUN_ROUND);
 
     srand(time(NULL));
 
@@ -50,7 +50,9 @@ int main()
             _buf[i] = buf[i];
 #endif
         }
+#if TEST_USE_PRINT
         printf("%ssend[%u] end\n\n", ((BUFFER_SIZE - 1) % 8 == 0) ? "" : "\n", counter);
+#endif
 
         if (counter == RUN_ROUND) {
             break;

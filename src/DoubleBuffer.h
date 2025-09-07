@@ -8,6 +8,8 @@
 
 #include <stdint.h>
 
+#define DOUBLEBUFFER_USE_PETERSON    1
+
 /*==================================================
     Tools Begin
 ==================================================*/
@@ -79,13 +81,22 @@ typedef void (*DB_Swap_Event_Callback)(uint8_t back_ind, void *user_data);
 
 struct DoubleBuffer
 {
+    /*------- peterson --------*/
+
+#if DOUBLEBUFFER_USE_PETERSON
+    volatile struct {
+        uint32_t f0  : 1;
+        uint32_t f1  : 1;
+    } flags;
+    volatile uint32_t turn;
+#endif
+
     /*---------- buf ----------*/
 
     uint8_t *buff[2];
+    volatile uint8_t back_index;
     uint32_t size;
     volatile uint32_t counter[2];
-
-    volatile uint8_t back_index;
 
     /*---------- fsm ----------*/
 

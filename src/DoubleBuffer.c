@@ -20,12 +20,18 @@ int db_init(struct DoubleBuffer * const db)
 
     db->state = DB_STATE_UNINIT;
 
+#if DOUBLEBUFFER_USE_PETERSON
+    db->flags.f0 = 0;
+    db->flags.f1 = 0;
+    db->turn = 0;
+#endif
+
     db->buff[0] = nullptr;
     db->buff[1] = nullptr;
+    db->back_index = 0;
     db->size = 0;
     db->counter[0] = 0;
     db->counter[1] = 0;
-    db->back_index = 0;
 
     db->send = nullptr;
     db->recv = nullptr;
@@ -249,8 +255,17 @@ int db_send(
         return -1;
     }
 
+#if DOUBLEBUFFER_USE_PETERSON
+    db->flags.f0 = 1;
+    db->turn = 1;
+    while (db->flags.f1 == 1 && db->turn == 1) ;
+#endif
+
     int ret = db_base_check(db);
     if (ret != 0) {
+#if DOUBLEBUFFER_USE_PETERSON
+        db->flags.f0 = 0;
+#endif
         return ret;
     }
 
@@ -258,6 +273,9 @@ int db_send(
     if (db_chk_state(db, DB_STATE_BACK_IDLE)) {
         db_fill_back_buffer(db, buff, offset, size);
     } else {
+#if DOUBLEBUFFER_USE_PETERSON
+        db->flags.f0 = 0;
+#endif
         return -5;
     }
 
@@ -266,6 +284,9 @@ int db_send(
     while (!db_chk_state(db, DB_STATE_FRONT_IDLE)) {
         time++;
         if (time >= timeout) {
+#if DOUBLEBUFFER_USE_PETERSON
+            db->flags.f0 = 0;
+#endif
             return -6;
         }
     }
@@ -288,6 +309,9 @@ int db_send(
 
     db_clr_state(db, DB_STATE_FRONT_IDLE);
     db_set_state(db, DB_STATE_SENDING);
+#if DOUBLEBUFFER_USE_PETERSON
+    db->flags.f0 = 0;
+#endif
     if (db->send) {
         db->send(&db->buff[front_index][0], db->counter[front_index]);
     }
@@ -315,11 +339,27 @@ int db_recv(
 
 void db_send_complete(struct DoubleBuffer * const db)
 {
-    int ret = db_base_check(db);
-    if (ret != 0) {
+    if (db == nullptr) {
+        return;
+    }
+
+#if DOUBLEBUFFER_USE_PETERSON
+    db->flags.f1 = 1;
+    db->turn = 0;
+    while (db->flags.f0 == 1 && db->turn == 0) ;
+#endif
+
+    if (db_base_check(db) != 0) {
+#if DOUBLEBUFFER_USE_PETERSON
+        db->flags.f1 = 0;
+#endif
         return;
     }
 
     db_clr_state(db, DB_STATE_SENDING);
     db_set_state(db, DB_STATE_FRONT_IDLE);
+
+#if DOUBLEBUFFER_USE_PETERSON
+    db->flags.f1 = 0;
+#endif
 }

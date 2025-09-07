@@ -6,7 +6,9 @@
         "corecrt_wstdlib.h": "c",
         "doublebuffer.h": "c",
         "stdio.h": "c",
-        "time.h": "c"
+        "time.h": "c",
+        "stdint.h": "c",
+        "windows.h": "c"
     },
     "cmake.sourceDirectory": "${workspaceFolder}/src"
 }

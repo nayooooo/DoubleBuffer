@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include "../../../src/DoubleBuffer.h"
 
-#define BUFFER_SIZE (128)
+#define BUFFER_SIZE (1024)
 #define RUN_ROUND   (100)
 #define TEST_USE_PRINT       0
 
@@ -36,12 +36,10 @@ void db_send_handler(uint8_t *buf, uint32_t size)
 DWORD WINAPI send_thread(LPVOID param)
 {
     ThreadParam *para = (ThreadParam *)param;
-    uint32_t counter = 0;
+    uint32_t counter = RUN_ROUND;
     uint8_t buf[BUFFER_SIZE] = { 0 };
 
-    while (1) {
-        counter++;
-
+    while (counter--) {
         DWORD ret = WaitForSingleObject(send_semaphore, INFINITE);
         if (ret == WAIT_OBJECT_0) {
 #if TEST_USE_PRINT
@@ -51,31 +49,32 @@ DWORD WINAPI send_thread(LPVOID param)
 #if TEST_USE_PRINT
             printf("send thread wait data error: %d\n", GetLastError());
 #endif
+            db_send_complete(&db);
             continue;
         }
+        uint8_t *pBuf = para->buf;
+        uint32_t size = para->size;
 
 #if TEST_USE_PRINT
-        printf("send[%u]:", counter);
+        printf("send[%u]:", RUN_ROUND - counter);
 #endif
-        for (uint32_t i = 0; i < para->size; i++) {
+        for (uint32_t i = 0; i < size; i++) {
 #if TEST_USE_PRINT
             if (i % 8 == 0) {
                 printf("\n");
             } else {
                 printf("\t");
             }
-            printf("%u", para->buf[i]);
+            printf("%u", pBuf[i]);
 #else
-            buf[i] = para->buf[i];
+            buf[i] = pBuf[i];
 #endif
         }
-        printf("%ssend[%u] end\n\n", ((para->size - 1) % 8 == 0) ? "" : "\n", counter);
+#if TEST_USE_PRINT
+        printf("%ssend[%u] end\n\n", ((size - 1) % 8 == 0) ? "" : "\n", RUN_ROUND - counter);
+#endif
 
         db_send_complete(&db);
-
-        if (counter == RUN_ROUND) {
-            break;
-        }
     }
 
     return 0;
@@ -83,21 +82,23 @@ DWORD WINAPI send_thread(LPVOID param)
 
 DWORD WINAPI back_thread(LPVOID param)
 {
-    uint32_t counter = 0;
+    uint32_t counter = RUN_ROUND;
     uint8_t buf[BUFFER_SIZE] = { 0 };
 
-    while (1) {
-        counter++;
-
+    while (counter--) {
         for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
             buf[i] = (uint8_t)(rand() & 0xFF);
         }
 
-        db_send(&db, &buf[0], 0, BUFFER_SIZE, 0xFFFFFFFF);
-
-        if (counter == RUN_ROUND) {
-            break;
-        }
+        int ret;
+        do {
+            ret = db_send(&db, &buf[0], 0, BUFFER_SIZE, 0xFFFFFFFF);
+            if (ret != BUFFER_SIZE) {
+#if TEST_USE_PRINT
+                printf("round[%u] error code: %d\n", RUN_ROUND - counter, ret);
+#endif
+            }
+        } while (ret != BUFFER_SIZE);
     }
 
     return 0;
@@ -109,7 +110,7 @@ int main()
     double elapsed_time;
     QueryPerformanceFrequency(&frequency);
 
-    printf("start!\n");
+    printf("buf[%u] %u test start!\n", BUFFER_SIZE, RUN_ROUND);
 
     srand(time(NULL));
 
@@ -117,7 +118,7 @@ int main()
     db_set_buffer(&db, buf0, buf1, BUFFER_SIZE);
     db_set_handle(&db, db_send_handler, nullptr);
 
-    send_semaphore = CreateSemaphore(NULL, 0, 1, NULL);
+    send_semaphore = CreateSemaphore(NULL, 0, 1000000, NULL);
     if (send_semaphore == NULL) {
         printf("send semaphore create failed!\n");
         return -3;
@@ -140,7 +141,10 @@ int main()
 
     QueryPerformanceCounter(&start);
     printf("waitting for thread work complete...\n");
-    WaitForMultipleObjects(2, threads, TRUE, INFINITE);
+    WaitForMultipleObjects(1, &threads[0], TRUE, INFINITE);
+    printf("thread 0 complete!\n");
+    WaitForMultipleObjects(1, &threads[1], TRUE, INFINITE);
+    printf("thread 1 complete!\n");
     QueryPerformanceCounter(&end);
     elapsed_time = (end.QuadPart - start.QuadPart) * 1000.0 / frequency.QuadPart;
 
