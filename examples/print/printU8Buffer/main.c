@@ -9,8 +9,9 @@
 #include <stdlib.h>
 #include "../../../src/DoubleBuffer.h"
 
-#define BUFFER_SIZE (1024)
+#define BUFFER_SIZE (128)
 #define RUN_ROUND   (100)
+#define TEST_USE_PRINT       0
 
 struct DoubleBuffer db;
 uint8_t buf0[BUFFER_SIZE] = { 0 };
@@ -36,26 +37,37 @@ DWORD WINAPI send_thread(LPVOID param)
 {
     ThreadParam *para = (ThreadParam *)param;
     uint32_t counter = 0;
+    uint8_t buf[BUFFER_SIZE] = { 0 };
 
     while (1) {
         counter++;
 
         DWORD ret = WaitForSingleObject(send_semaphore, INFINITE);
         if (ret == WAIT_OBJECT_0) {
+#if TEST_USE_PRINT
             printf("send thread has received data\n");
+#endif
         } else {
+#if TEST_USE_PRINT
             printf("send thread wait data error: %d\n", GetLastError());
+#endif
             continue;
         }
 
+#if TEST_USE_PRINT
         printf("send[%u]:", counter);
+#endif
         for (uint32_t i = 0; i < para->size; i++) {
+#if TEST_USE_PRINT
             if (i % 8 == 0) {
                 printf("\n");
             } else {
                 printf("\t");
             }
             printf("%u", para->buf[i]);
+#else
+            buf[i] = para->buf[i];
+#endif
         }
         printf("%ssend[%u] end\n\n", ((para->size - 1) % 8 == 0) ? "" : "\n", counter);
 
