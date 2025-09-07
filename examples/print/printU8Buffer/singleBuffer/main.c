@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 #define BUFFER_SIZE (1024)
-#define RUN_ROUND   (1000)
+#define RUN_ROUND   (100)
 #define TEST_USE_PRINT       0
 
 uint8_t buf[BUFFER_SIZE] = { 0 };
@@ -19,7 +19,7 @@ int main()
 {
     LARGE_INTEGER frequency, start, end;
     double elapsed_time;
-    uint32_t counter = 0;
+    uint32_t counter = RUN_ROUND;
     uint8_t _buf[BUFFER_SIZE] = { 0 };
     QueryPerformanceFrequency(&frequency);
 
@@ -28,15 +28,14 @@ int main()
     srand(time(NULL));
 
     QueryPerformanceCounter(&start);
-    while (1) {
-        counter++;
+    while (counter--) {
 
         for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
             buf[i] = (uint8_t)(rand() & 0xFF);
         }
 
 #if TEST_USE_PRINT
-        printf("send[%u]:", counter);
+        printf("send[%u]:", RUN_ROUND - counter);
 #endif
         for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
 #if TEST_USE_PRINT
@@ -51,12 +50,8 @@ int main()
 #endif
         }
 #if TEST_USE_PRINT
-        printf("%ssend[%u] end\n\n", ((BUFFER_SIZE - 1) % 8 == 0) ? "" : "\n", counter);
+        printf("%ssend[%u] end\n\n", ((BUFFER_SIZE - 1) % 8 == 0) ? "" : "\n", RUN_ROUND - counter);
 #endif
-
-        if (counter == RUN_ROUND) {
-            break;
-        }
     }
     QueryPerformanceCounter(&end);
     elapsed_time = (end.QuadPart - start.QuadPart) * 1000.0 / frequency.QuadPart;

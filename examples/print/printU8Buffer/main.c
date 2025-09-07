@@ -84,6 +84,7 @@ DWORD WINAPI back_thread(LPVOID param)
 {
     uint32_t counter = RUN_ROUND;
     uint8_t buf[BUFFER_SIZE] = { 0 };
+    uint32_t delay_times = 0;
 
     while (counter--) {
         for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
@@ -92,8 +93,9 @@ DWORD WINAPI back_thread(LPVOID param)
 
         int ret;
         do {
-            ret = db_send(&db, &buf[0], 0, BUFFER_SIZE, 0xFFFFFFFF);
+            ret = db_send(&db, &buf[0], 0, BUFFER_SIZE, 0xF);
             if (ret != BUFFER_SIZE) {
+                delay_times++;
 #if TEST_USE_PRINT
                 printf("round[%u] error code: %d\n", RUN_ROUND - counter, ret);
 #endif
@@ -101,11 +103,17 @@ DWORD WINAPI back_thread(LPVOID param)
         } while (ret != BUFFER_SIZE);
     }
 
+    printf("total delay times: %u\n", delay_times);
+
     return 0;
 }
 
 int main()
 {
+    SYSTEM_INFO sysInfo;
+    GetSystemInfo(&sysInfo);
+    printf("system cpu core num: %d\n", sysInfo.dwNumberOfProcessors);
+
     LARGE_INTEGER frequency, start, end;
     double elapsed_time;
     QueryPerformanceFrequency(&frequency);
@@ -118,28 +126,41 @@ int main()
     db_set_buffer(&db, buf0, buf1, BUFFER_SIZE);
     db_set_handle(&db, db_send_handler, nullptr);
 
-    send_semaphore = CreateSemaphore(NULL, 0, 1000000, NULL);
+    QueryPerformanceCounter(&start);
+
+    send_semaphore = CreateSemaphore(NULL, 0, 1, NULL);
     if (send_semaphore == NULL) {
         printf("send semaphore create failed!\n");
-        return -3;
+        return -1;
     }
     printf("send semaphore is created!\n");
 
     threads[0] = CreateThread(NULL, 0, send_thread, &send_thread_param, 0, NULL);
     if (threads[0] == NULL) {
         printf("thread 0 create failed!\n");
-        return -1;
+        return -2;
     }
     printf("thread 0 is created!\n");
+    if (SetThreadAffinityMask(threads[0], BIT(0)) != 0) {
+        printf("thread 0 put into core 0 success!\n");
+    } else {
+        printf("thread 0 put into core 0 failed!\n");
+        return -3;
+    }
 
     threads[1] = CreateThread(NULL, 0, back_thread, NULL, 0, NULL);
     if (threads[1] == NULL) {
         printf("thread 1 create failed!\n");
-        return -2;
+        return -4;
     }
     printf("thread 1 is created!\n");
+    if (SetThreadAffinityMask(threads[0], BIT(1)) != 0) {
+        printf("thread 1 put into core 1 success!\n");
+    } else {
+        printf("thread 1 put into core 1 failed!\n");
+        return -3;
+    }
 
-    QueryPerformanceCounter(&start);
     printf("waitting for thread work complete...\n");
     WaitForMultipleObjects(1, &threads[0], TRUE, INFINITE);
     printf("thread 0 complete!\n");
