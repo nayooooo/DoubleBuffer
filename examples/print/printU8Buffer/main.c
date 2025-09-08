@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include "../../../src/DoubleBuffer.h"
 
-#define BUFFER_SIZE (1024)
+#define BUFFER_SIZE (128)
 #define RUN_ROUND   (100)
 #define TEST_USE_PRINT       0
 
@@ -25,6 +25,7 @@ ThreadParam send_thread_param = { nullptr, 0 };
 
 HANDLE threads[2] = { NULL, NULL };
 HANDLE send_semaphore = NULL;
+CRITICAL_SECTION g_cs;
 
 void db_send_handler(uint8_t *buf, uint32_t size)
 {
@@ -74,7 +75,9 @@ DWORD WINAPI send_thread(LPVOID param)
         printf("%ssend[%u] end\n\n", ((size - 1) % 8 == 0) ? "" : "\n", RUN_ROUND - counter);
 #endif
 
+        EnterCriticalSection(&g_cs);
         db_send_complete(&db);
+        LeaveCriticalSection(&g_cs);
     }
 
     return 0;
@@ -93,7 +96,9 @@ DWORD WINAPI back_thread(LPVOID param)
 
         int ret;
         do {
+            EnterCriticalSection(&g_cs);
             ret = db_send(&db, &buf[0], 0, BUFFER_SIZE, 0xF);
+            LeaveCriticalSection(&g_cs);
             if (ret != BUFFER_SIZE) {
                 delay_times++;
 #if TEST_USE_PRINT
@@ -135,6 +140,8 @@ int main()
     }
     printf("send semaphore is created!\n");
 
+    InitializeCriticalSection(&g_cs);
+
     threads[0] = CreateThread(NULL, 0, send_thread, &send_thread_param, 0, NULL);
     if (threads[0] == NULL) {
         printf("thread 0 create failed!\n");
@@ -154,7 +161,7 @@ int main()
         return -4;
     }
     printf("thread 1 is created!\n");
-    if (SetThreadAffinityMask(threads[0], BIT(1)) != 0) {
+    if (SetThreadAffinityMask(threads[1], BIT(1)) != 0) {
         printf("thread 1 put into core 1 success!\n");
     } else {
         printf("thread 1 put into core 1 failed!\n");
@@ -172,6 +179,7 @@ int main()
     CloseHandle(threads[0]);
     CloseHandle(threads[1]);
     CloseHandle(send_semaphore);
+    DeleteCriticalSection(&g_cs);
 
     printf("test ok!\n");
 

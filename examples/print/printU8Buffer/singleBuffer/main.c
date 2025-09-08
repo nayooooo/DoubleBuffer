@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define BUFFER_SIZE (1024)
+#define BUFFER_SIZE (128)
 #define RUN_ROUND   (100)
 #define TEST_USE_PRINT       0
 
