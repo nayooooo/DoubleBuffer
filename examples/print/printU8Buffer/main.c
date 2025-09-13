@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include "../../../src/DoubleBuffer.h"
 
-#define BUFFER_SIZE (1024)
-#define RUN_ROUND   (1000000)
+#define BUFFER_SIZE (4096)
+#define RUN_ROUND   (100000)
 #define TEST_USE_PRINT       0
 #define TEST_USE_MONITOR     1
 
@@ -56,6 +56,7 @@ DWORD WINAPI monitor_thread_entry(LPVOID param)
     float need_time = 1E30f;
     uint32_t send_counter_backup = 0;
     uint32_t back_counter_backup = 0;
+    DWORD sleep_time = 500;
 
     do {
         char str[200] = "";
@@ -65,9 +66,10 @@ DWORD WINAPI monitor_thread_entry(LPVOID param)
         printf("%s", str);
     } while (0);
 
-    while (1) {
-        Sleep(500);
+    // wait
+    Sleep(10);
 
+    while (1) {
         char str[200] = "";
         size_t len = 0;
 
@@ -81,23 +83,27 @@ DWORD WINAPI monitor_thread_entry(LPVOID param)
         len += strftime(&str[len], sizeof(str) - len, "[%Y-%m-%d %H:%M:%S]", local_time);
 
         // info
-        len += sprintf(&str[len], "[send: %u/%u][back: %u/%u]", send_counter, RUN_ROUND, back_counter, RUN_ROUND);
+        len += sprintf(&str[len], "[send %u/%u][back %u/%u]", send_counter, RUN_ROUND, back_counter, RUN_ROUND);
+
+        uint32_t send_complete_round_last = send_counter - send_counter_backup;
+        uint32_t back_complete_round_last = back_counter - back_counter_backup;
+
+        // speed
+        float speed = 1.0 * send_complete_round_last * BUFFER_SIZE / sleep_time;  // B/ms
+        speed *= 1000;  // B/s
+        speed /= 1024;  // kB/s
+        speed /= 1024;  // MB/s
+        len += sprintf(&str[len], "[speed %.03f MB/s]", speed);
 
         // need time
-        uint32_t send_complete_round_last_500ms = send_counter - send_counter_backup;
-        uint32_t back_complete_round_last_500ms = back_counter - back_counter_backup;
-        float send_need_time = 1.0 * (RUN_ROUND - send_counter) / send_complete_round_last_500ms;
-        send_need_time *= 500;
-        float back_need_time = 1.0 * (RUN_ROUND - back_counter) / back_complete_round_last_500ms;
-        back_need_time *= 500;
+        float send_need_time = 1.0 * (RUN_ROUND - send_counter) / send_complete_round_last;
+        float back_need_time = 1.0 * (RUN_ROUND - back_counter) / back_complete_round_last;
         need_time = MAX(send_need_time, back_need_time);
+        need_time *= sleep_time;
         len += sprintf(&str[len], " need");
-        int day = (int)need_time / (1000 * 60 * 60 * 24);
-        need_time -= day * (1000 * 60 * 60 * 24);
-        int hour = (int)need_time / (1000 * 60 * 60);
-        need_time -= hour * (1000 * 60 * 60);
-        int minute = (int)need_time / (1000 * 60);
-        need_time -= minute * (1000 * 60);
+        int day = (int)need_time / (1000 * 60 * 60 * 24); need_time -= day * (1000 * 60 * 60 * 24);
+        int hour = (int)need_time / (1000 * 60 * 60); need_time -= hour * (1000 * 60 * 60);
+        int minute = (int)need_time / (1000 * 60); need_time -= minute * (1000 * 60);
         int seconds = (int)(need_time / 1000);
         if (day > 0) {
             len += sprintf(&str[len], " %d day", day);
@@ -113,6 +119,8 @@ DWORD WINAPI monitor_thread_entry(LPVOID param)
         if (send_counter >= RUN_ROUND && back_counter >= RUN_ROUND) {
             break;
         }
+
+        Sleep(sleep_time);
     }
 
     return 0;
@@ -140,7 +148,7 @@ DWORD WINAPI send_thread(LPVOID param)
         uint32_t size = para->size;
 
 #if TEST_USE_PRINT
-        printf("send[%u]:", RUN_ROUND - counter);
+        printf("send[%u]:", send_counter);
 #endif
         for (uint32_t i = 0; i < size; i++) {
 #if TEST_USE_PRINT
@@ -155,7 +163,7 @@ DWORD WINAPI send_thread(LPVOID param)
 #endif
         }
 #if TEST_USE_PRINT
-        printf("%ssend[%u] end\n\n", ((size - 1) % 8 == 0) ? "" : "\n", RUN_ROUND - counter);
+        printf("%ssend[%u] end\n\n", ((size - 1) % 8 == 0) ? "" : "\n", send_counter);
 #endif
 
     end:
@@ -196,7 +204,7 @@ DWORD WINAPI back_thread(LPVOID param)
             if (ret != BUFFER_SIZE) {
                 delay_times++;
 #if TEST_USE_PRINT
-                printf("round[%u] error code: %d\n", RUN_ROUND - counter, ret);
+                printf("round[%u] error code: %d\n", back_counter, ret);
 #endif
             }
         } while (ret != BUFFER_SIZE);
@@ -204,7 +212,7 @@ DWORD WINAPI back_thread(LPVOID param)
         back_counter++;
     }
 
-    printf("total delay times: %u\n", delay_times);
+    printf("\ntotal delay times: %u\n", delay_times);
 
     return 0;
 }
@@ -241,10 +249,10 @@ int main()
         return -2;
     }
     printf("monitor thread created!\n");
-    if (SetThreadAffinityMask(monitor_thread, BIT(1)) != 0) {
-        printf("monitor thread put into core 1 success!\n");
+    if (SetThreadAffinityMask(monitor_thread, BIT(6)) != 0) {
+        printf("monitor thread put into core 6 success!\n");
     } else {
-        printf("monitor thread put into core 1 failed!\n");
+        printf("monitor thread put into core 6 failed!\n");
         return -3;
     }
 #endif
@@ -288,8 +296,8 @@ int main()
 
 #if TEST_USE_MONITOR
     WaitForMultipleObjects(1, &monitor_thread, TRUE, INFINITE);
+    printf("\nmonitor thread complete!\n");
 #endif
-    printf("monitor thread complete!\n");
 
     CloseHandle(threads[0]);
     CloseHandle(threads[1]);
